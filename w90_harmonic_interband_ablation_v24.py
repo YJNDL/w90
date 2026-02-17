@@ -3784,6 +3784,21 @@ def main():
                     band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, idx_ref_1based=BAND_N)
                     print(f"[P0] Band overlap tracking @ same k: chosen_band={band_n_p0_1based}  overlap={ov:.6f}")
 
+        # Build inter sensitivity vector S for knob analysis.
+        # NOTE: S must be available regardless of whether EXPORT_ORBPAIR_GROUP_RANKING is enabled.
+        D1_eig0_knob = evecs0.conj().T @ D10 @ evecs0  # (nb, nb)
+        Vrow_knob = D1_eig0_knob[band_n_idx, :]        # <n|D1|m>
+        denom_knob = (En0 - evals0).real.astype(float)
+
+        A_knob = np.zeros_like(Vrow_knob, dtype=np.complex128)
+        for m in range(Vrow_knob.size):
+            if m == band_n_idx:
+                continue
+            if INTER_SENS_M_LIST and (m + 1) not in set(INTER_SENS_M_LIST):
+                continue
+            A_knob[m] = np.conj(Vrow_knob[m]) / denom_knob[m]
+        S_knob = evecs0 @ A_knob  # (num_wann,)
+
         # ------------------ Step A/B: build knob sensitivity (+ optional P0 lambda) table ------------------
         knob_rows = compute_knob_table_Rij(
             R_list=R_list,
@@ -3795,7 +3810,7 @@ def main():
             group_labels=labels_g,
             q_vec_int=q,
             band_vec_n=vn0,
-            S_vec=S,
+            S_vec=S_knob,
             labels=labels,
             group_max=KNOB_MAX_GROUP,
             min_abs_t0=KNOB_MIN_ABS_T0,
