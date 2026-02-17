@@ -3966,8 +3966,7 @@ def main():
                 D1=D1_t,
                 D2=D2_t,
                 band_n_1based=int(band_t_1based),
-                band_m_1based=int(BAND_M),
-                topn=TOPN,
+                band_m_1based=int(BAND_M)
             )
             print("\n[TOY] Curvature change summary:")
             print(f"  C0_total = {C0_total:+.6e} eV·Å^2")
@@ -3993,8 +3992,7 @@ def main():
                 D1=D1_1,
                 D2=D2_1,
                 band_n_1based=int(band_n_p0_1based),
-                band_m_1based=int(BAND_M),
-                topn=TOPN,
+                band_m_1based=int(BAND_M)
             )
             C1_total = float(true1["C_total"])
 
@@ -4045,8 +4043,7 @@ def main():
                     D1=D1_geo,
                     D2=D2_geo,
                     band_n_1based=int(band_geo_1based),
-                    band_m_1based=int(BAND_M),
-                    topn=TOPN,
+                    band_m_1based=int(BAND_M)
                 )
                 dC_geo = float(geo["C_total"]) - float(C0_total)
                 print(f"[P0] Geometry-only (same HR, P0 lattice+dir): C_geo={float(geo['C_total']):+.6e}  ΔC_geo={dC_geo:+.6e}  (band overlap={ov_geo:.6f})")
