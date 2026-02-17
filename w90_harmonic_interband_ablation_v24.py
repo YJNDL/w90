@@ -1257,17 +1257,24 @@ def compute_total_curvature_from_hr(
     band_n_1based: int,
 ) -> Tuple[float, float, float]:
     """Compute (C_intra, C_inter, C_total) for band_n at given k and direction."""
-    w0, w1, w2, _dotR = build_weights_and_dotR(
+    _phase, w0, w1, w2, _dotR = build_weights_and_dotR(
         R_list=R_list,
         degeneracy=degeneracy,
         lattice=lattice,
         k_frac=k_frac,
         u_hat_cart=u_hat_cart,
     )
-    Hk, D1, D2 = build_H_D1_D2(H_R, w0, w1, w2)
-    C_intra, C_inter, C_total, _tbl, _evals, _evecs = curvature_and_interband_table(
-        Hk=Hk, D1=D1, D2=D2, band_n=band_n_1based, topn=0
+    Hk, D1, D2 = build_H_D1_D2(w0, w1, w2, H_R)
+    res = curvature_and_interband_table(
+        Hk=Hk,
+        D1=D1,
+        D2=D2,
+        band_n_1based=band_n_1based,
+        band_m_1based=None,
     )
+    C_intra = float(res["C_intra"])
+    C_inter = float(res["C_inter"])
+    C_total = float(res["C_total"])
     return float(C_intra), float(C_inter), float(C_total)
 
 
@@ -1516,7 +1523,11 @@ def run_P1_onsite_additive(
         print(f"[P1] linear vs nonlinear: ΔC_pred - ΔC_true = {pred_dC - dC_true:+.6e}")
 
     if export_sens_csv:
-        write_csv(export_sens_csv, rows)
+        write_csv(
+            export_sens_csv,
+            fieldnames=["i", "label", "delta_e_eV", "dC_dEi_eVA2_per_eV", "dC_pred_eVA2"],
+            rows=rows,
+        )
         print(f"[P1][OUT] Wrote onsite sensitivity table to: {export_sens_csv}")
 
     if export_summary_csv:
@@ -1530,7 +1541,11 @@ def run_P1_onsite_additive(
             "fd_delta_e": float(fd_delta_e),
             "num_knobs": int(len(onsite_deltas)),
         }]
-        write_csv(export_summary_csv, summ)
+        write_csv(
+            export_summary_csv,
+            fieldnames=["C0", "C0_intra", "C0_inter", "dC_pred", "C_new", "dC_true", "fd_delta_e", "num_knobs"],
+            rows=summ,
+        )
         print(f"[P1][OUT] Wrote P1 summary to: {export_summary_csv}")
 
 
@@ -1664,11 +1679,19 @@ def run_P2_harrison_sk(
                 "dC_pred_P2": float(S_tot * dlam),
             })
             knob_out.append(row2)
-        write_csv(export_knob_csv, knob_out)
+        write_csv(
+            export_knob_csv,
+            fieldnames=list(knob_out[0].keys()) if knob_out else list(knob_rows[0].keys()) + ["lambda_P2", "dlam_P2", "dC_pred_P2"],
+            rows=knob_out,
+        )
         print(f"[P2][OUT] Wrote knob table (+P2 λ) to: {export_knob_csv}")
 
     if export_lambda_csv:
-        write_csv(export_lambda_csv, detail_rows)
+        write_csv(
+            export_lambda_csv,
+            fieldnames=["R1", "R2", "R3", "i", "j", "label_i", "label_j", "r0_A", "r1_A", "lambda_len", "lambda_ang", "lambda", "S_total", "dC_pred"],
+            rows=detail_rows,
+        )
         print(f"[P2][OUT] Wrote P2 λ table to: {export_lambda_csv}")
 
     # Step-C: nonlinear re-evaluation (toy but self-consistent within TB)
@@ -3772,7 +3795,7 @@ def main():
 
                 if P0_BAND_TRACK_BY_OVERLAP:
                     # Track band index at the same k by overlap with baseline eigenvector
-                    _, dotR_tmp, w0_p0, w1_p0, w2_p0 = build_weights_and_dotR(
+                    _, w0_p0, w1_p0, w2_p0, dotR_tmp = build_weights_and_dotR(
                         lattice=lattice_p0,
                         R_list=R_list_p0,
                         degeneracy=degeneracy_p0,
@@ -3781,8 +3804,23 @@ def main():
                     )
                     Hk_p0, _, _ = build_H_D1_D2(w0_p0, w1_p0, w2_p0, H_R_p0)
                     evals_p0, evecs_p0 = np.linalg.eigh(Hk_p0)
-                    band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, band_ref_1based=BAND_N)
+                    band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, idx_ref_1based=BAND_N)
                     print(f"[P0] Band overlap tracking @ same k: chosen_band={band_n_p0_1based}  overlap={ov:.6f}")
+
+        # Build inter sensitivity vector S for knob analysis.
+        # NOTE: S must be available regardless of whether EXPORT_ORBPAIR_GROUP_RANKING is enabled.
+        D1_eig0_knob = evecs0.conj().T @ D10 @ evecs0  # (nb, nb)
+        Vrow_knob = D1_eig0_knob[band_n_idx, :]        # <n|D1|m>
+        denom_knob = (En0 - evals0).real.astype(float)
+
+        A_knob = np.zeros_like(Vrow_knob, dtype=np.complex128)
+        for m in range(Vrow_knob.size):
+            if m == band_n_idx:
+                continue
+            if INTER_SENS_M_LIST and (m + 1) not in set(INTER_SENS_M_LIST):
+                continue
+            A_knob[m] = np.conj(Vrow_knob[m]) / denom_knob[m]
+        S_knob = evecs0 @ A_knob  # (num_wann,)
 
         # ------------------ Step A/B: build knob sensitivity (+ optional P0 lambda) table ------------------
         knob_rows = compute_knob_table_Rij(
@@ -3795,7 +3833,7 @@ def main():
             group_labels=labels_g,
             q_vec_int=q,
             band_vec_n=vn0,
-            S_vec=S,
+            S_vec=S_knob,
             labels=labels,
             group_max=KNOB_MAX_GROUP,
             min_abs_t0=KNOB_MIN_ABS_T0,
@@ -3921,7 +3959,7 @@ def main():
             )
             Hk_t, D1_t, D2_t = build_H_D1_D2(w0, w1, w2, H_R_tuned)
             evals_t, evecs_t = np.linalg.eigh(Hk_t)
-            band_t_1based, ov_t = band_track_index(evecs_ref=evecs0, evecs_new=evecs_t, band_ref_1based=BAND_N)
+            band_t_1based, ov_t = band_track_index(evecs_ref=evecs0, evecs_new=evecs_t, idx_ref_1based=BAND_N)
 
             tuned = curvature_and_interband_table(
                 Hk=Hk_t,
@@ -3941,7 +3979,7 @@ def main():
             print("\n=== P0 validation: compute true curvature from perturbed HR (Step C) ===")
 
             # True curvature on P0 Hamiltonian
-            _, dotR_p0, w0_p0, w1_p0, w2_p0 = build_weights_and_dotR(
+            _, w0_p0, w1_p0, w2_p0, dotR_p0 = build_weights_and_dotR(
                 lattice=lattice_p0,
                 R_list=R_list_p0,
                 degeneracy=degeneracy_p0,
@@ -3989,7 +4027,7 @@ def main():
 
             # Optional geometry-only term (same H_R, but P0 lattice/direction)
             if P0_INCLUDE_GEOMETRY:
-                _, dotR_geo, w0_geo, w1_geo, w2_geo = build_weights_and_dotR(
+                _, w0_geo, w1_geo, w2_geo, dotR_geo = build_weights_and_dotR(
                     lattice=lattice_p0,
                     R_list=R_list,
                     degeneracy=degeneracy,
@@ -4000,7 +4038,7 @@ def main():
 
                 # Track band by overlap (reference: baseline eigenvectors evecs0)
                 evals_geo, evecs_geo = np.linalg.eigh(Hk_geo)
-                band_geo_1based, ov_geo = band_track_index(evecs_ref=evecs0, evecs_new=evecs_geo, band_ref_1based=BAND_N)
+                band_geo_1based, ov_geo = band_track_index(evecs_ref=evecs0, evecs_new=evecs_geo, idx_ref_1based=BAND_N)
 
                 geo = curvature_and_interband_table(
                     Hk=Hk_geo,
@@ -4252,6 +4290,13 @@ TMP_ROOT = BASE_DIR / "_strain_sweep_tmp"
 # For derivatives: "win" recommended if your win has unit_cell_cart in Angstrom.
 LATTICE_SOURCE = "win"  # "win" or "poscar"
 
+# Prediction toggles (explicit naming; keep old aliases below for compatibility)
+ENABLE_P0_PREDICTION = DO_P0_PRED
+ENABLE_P2_PREDICTION = DO_P2_PRED
+
+# Backward-compatible aliases
+DO_P0_PRED = ENABLE_P0_PREDICTION
+DO_P2_PRED = ENABLE_P2_PREDICTION
 
 # =========================
 # Internal helpers
@@ -4289,9 +4334,21 @@ def _load_analysis_module(script_path: Path):
 
 def _run_analysis(mod, workdir: Path, overrides: Dict[str, Any]) -> None:
     """Run mod.main() with selected global overrides in a given workdir."""
+    compatibility_map = {
+        # legacy/driver aliases -> canonical names used in main logic
+        "TOPN": "TOPN_BANDS",
+        "KNOB_GROUP_MAX": "KNOB_MAX_GROUP",
+        "P0_POSCAR_FILE": "POSCAR_P0",
+        "P0_HR_FILE": "HR_FILE_P0",
+    }
+
     workdir.mkdir(parents=True, exist_ok=True)
     for k, v in overrides.items():
-        setattr(mod, k, v)
+        canonical_key = compatibility_map.get(k, k)
+        if not hasattr(mod, canonical_key):
+            print(f"[WARN] Unknown override key skipped: {k} (canonical: {canonical_key})")
+            continue
+        setattr(mod, canonical_key, v)
 
     cwd = Path.cwd()
     try:
@@ -4594,6 +4651,23 @@ def strain_sweep_main() -> None:
     # heatmap_data[strain_dir] = { knob_key : dC_pred }
     heatmap_data: Dict[str, Dict[str, float]] = {}
 
+    def _common_overrides(*, hr: Path, poscar: Path, win: Path, wout: Path,
+                          lattice_source: str) -> Dict[str, Any]:
+        return dict(
+            HR_FILE=str(hr),
+            POSCAR_FILE=str(poscar) if poscar.exists() else "",
+            WIN_FILE=str(win) if win.exists() else "",
+            WOUT_FILE=str(wout) if wout.exists() else "",
+            NUM_WANN=NUM_WANN,
+            BAND_N=BAND_N,
+            BAND_M=BAND_M,
+            TOPN_BANDS=8,
+            DIR_MODE=DIR_MODE,
+            KLINE_START=KLINE_START,
+            KLINE_END=KLINE_END,
+            LATTICE_SOURCE=lattice_source,
+        )
+
     for sdir in STRAIN_DIRS:
         case_dir = (base / sdir).resolve()
         case_hr = (case_dir / HR_NAME).resolve()
@@ -4616,19 +4690,14 @@ def strain_sweep_main() -> None:
         if str(LATTICE_SOURCE).lower() == "win" and (not win_used.exists()):
             lattice_source_case = "poscar"
 
-        case_overrides = dict(
-            HR_FILE=str(case_hr),
-            POSCAR_FILE=str(case_poscar if case_poscar.exists() else ref_poscar),
-            WIN_FILE=str(win_used) if win_used.exists() else "",
-            WOUT_FILE=str(wout_used) if wout_used.exists() else "",
-            NUM_WANN=NUM_WANN,
-            BAND_N=BAND_N,
-            BAND_M=BAND_M,
-            TOPN=8,
-            DIR_MODE=DIR_MODE,
-            KLINE_START=KLINE_START,
-            KLINE_END=KLINE_END,
-            LATTICE_SOURCE=lattice_source_case,
+        case_overrides = _common_overrides(
+            hr=case_hr,
+            poscar=(case_poscar if case_poscar.exists() else ref_poscar),
+            win=win_used,
+            wout=wout_used,
+            lattice_source=lattice_source_case,
+        )
+        case_overrides.update(dict(
             # auto k*
             AUTO_K0_MINABS_V_ENABLE=AUTO_K0_ENABLE,
             AUTO_K0_MINABS_V_NPTS=AUTO_K0_NPTS,
@@ -4647,7 +4716,7 @@ def strain_sweep_main() -> None:
             BAND_CHECK_ENABLE=False,
             HR_NUM_CHECK_ENABLE=True,
             EXPORT_HR_NUM_CHECK=True,
-        )
+        ))
 
         print(f"\n===== [{sdir}] Running strain analysis (auto k*) =====")
         _run_analysis(mod_case, case_dir, case_overrides)
@@ -4669,19 +4738,14 @@ def strain_sweep_main() -> None:
         if str(LATTICE_SOURCE).lower() == "win" and (not ref_win.exists()):
             lattice_source_ref = "poscar"
 
-        ref_overrides = dict(
-            HR_FILE=str(ref_hr),
-            POSCAR_FILE=str(ref_poscar if ref_poscar.exists() else ""),
-            WIN_FILE=str(ref_win) if ref_win.exists() else "",
-            WOUT_FILE=str(ref_wout) if ref_wout.exists() else "",
-            NUM_WANN=NUM_WANN,
-            BAND_N=BAND_N,
-            BAND_M=BAND_M,
-            TOPN=8,
-            DIR_MODE=DIR_MODE,
-            KLINE_START=KLINE_START,
-            KLINE_END=KLINE_END,
-            LATTICE_SOURCE=lattice_source_ref,
+        ref_overrides = _common_overrides(
+            hr=ref_hr,
+            poscar=ref_poscar,
+            win=ref_win,
+            wout=ref_wout,
+            lattice_source=lattice_source_ref,
+        )
+        ref_overrides.update(dict(
             # manual k*
             AUTO_K0_MINABS_V_ENABLE=False,
             K_FRAC=[kstar.kx_frac, kstar.ky_frac, kstar.kz_frac],
@@ -4697,11 +4761,11 @@ def strain_sweep_main() -> None:
             EXPORT_HR_NUM_CHECK=True,
             # knob sensitivities
             KNOB_SENS_ENABLE=True,
-            KNOB_GROUP_MAX=5,
-        )
+            KNOB_MAX_GROUP=5,
+        ))
 
         # P0: attach strained HR into the knob table
-        if DO_P0_PRED:
+        if ENABLE_P0_PREDICTION:
             # IMPORTANT: analysis script (v21+) uses HR_FILE_P0 / POSCAR_P0 internally.
             # Earlier driver drafts used P0_HR_FILE / P0_POSCAR_FILE. We set BOTH.
             ref_overrides.update(
@@ -4713,16 +4777,13 @@ def strain_sweep_main() -> None:
                     POSCAR_P0=str(case_poscar) if case_poscar.exists() else "",
                     WIN_FILE_P0=str(case_win) if case_win.exists() else "",
                     WOUT_FILE_P0=str(case_wout) if case_wout.exists() else "",
-                    # compatibility aliases
-                    P0_HR_FILE=str(case_hr),
-                    P0_POSCAR_FILE=str(case_poscar) if case_poscar.exists() else "",
                 )
             )
         else:
             ref_overrides.update(dict(P0_ENABLE=False))
 
         # P2: geometry-only mapping
-        if DO_P2_PRED:
+        if ENABLE_P2_PREDICTION:
             ref_overrides.update(
                 dict(
                     P2_ENABLE=True,
@@ -4743,7 +4804,7 @@ def strain_sweep_main() -> None:
 
         # ---- parse P0/P2 knob tables ----
         dC_pred_p0, top_p0, map_p0, kw_p0 = (float("nan"), [], {}, "")
-        if DO_P0_PRED:
+        if ENABLE_P0_PREDICTION:
             dC_pred_p0, top_p0, map_p0, kw_p0 = _parse_knob_table(
                 tmp_case / "knob_sensitivity.csv",
                 dC_col="pred_dC_total",
@@ -4752,7 +4813,7 @@ def strain_sweep_main() -> None:
             )
 
         dC_pred_p2, top_p2, map_p2, kw_p2 = (float("nan"), [], {}, "")
-        if DO_P2_PRED:
+        if ENABLE_P2_PREDICTION:
             dC_pred_p2, top_p2, map_p2, kw_p2 = _parse_knob_table(
                 tmp_case / "knob_sensitivity_with_p2.csv",
                 dC_col="dC_pred_P2",
@@ -4768,7 +4829,7 @@ def strain_sweep_main() -> None:
         elif src == "p2":
             use_source = "P2"
         else:
-            use_source = "P0" if DO_P0_PRED else ("P2" if DO_P2_PRED else "")
+            use_source = "P0" if ENABLE_P0_PREDICTION else ("P2" if ENABLE_P2_PREDICTION else "")
 
         top_used = top_p0 if use_source == "P0" else top_p2
         map_used = map_p0 if use_source == "P0" else map_p2
@@ -4790,10 +4851,10 @@ def strain_sweep_main() -> None:
             "C_strain_eVAng2": f"{C_case:.10e}",
             "C_ref_eVAng2": f"{C_ref:.10e}",
             "dC_real_eVAng2": f"{dC_real:.10e}",
-            "dC_pred_P0_eVAng2": f"{dC_pred_p0:.10e}" if DO_P0_PRED else "",
-            "dC_pred_P2_eVAng2": f"{dC_pred_p2:.10e}" if DO_P2_PRED else "",
-            "dC_real_over_pred_P0": f"{_ratio(dC_real, dC_pred_p0):.6f}" if DO_P0_PRED else "",
-            "dC_real_over_pred_P2": f"{_ratio(dC_real, dC_pred_p2):.6f}" if DO_P2_PRED else "",
+            "dC_pred_P0_eVAng2": f"{dC_pred_p0:.10e}" if ENABLE_P0_PREDICTION else "",
+            "dC_pred_P2_eVAng2": f"{dC_pred_p2:.10e}" if ENABLE_P2_PREDICTION else "",
+            "dC_real_over_pred_P0": f"{_ratio(dC_real, dC_pred_p0):.6f}" if ENABLE_P0_PREDICTION else "",
+            "dC_real_over_pred_P2": f"{_ratio(dC_real, dC_pred_p2):.6f}" if ENABLE_P2_PREDICTION else "",
             "top_hoppings_P0": kw_p0,
             "top_hoppings_P2": kw_p2,
             "top_source_used": use_source,
