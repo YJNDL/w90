@@ -1523,7 +1523,11 @@ def run_P1_onsite_additive(
         print(f"[P1] linear vs nonlinear: ΔC_pred - ΔC_true = {pred_dC - dC_true:+.6e}")
 
     if export_sens_csv:
-        write_csv(export_sens_csv, rows)
+        write_csv(
+            export_sens_csv,
+            fieldnames=["i", "label", "delta_e_eV", "dC_dEi_eVA2_per_eV", "dC_pred_eVA2"],
+            rows=rows,
+        )
         print(f"[P1][OUT] Wrote onsite sensitivity table to: {export_sens_csv}")
 
     if export_summary_csv:
@@ -1537,7 +1541,11 @@ def run_P1_onsite_additive(
             "fd_delta_e": float(fd_delta_e),
             "num_knobs": int(len(onsite_deltas)),
         }]
-        write_csv(export_summary_csv, summ)
+        write_csv(
+            export_summary_csv,
+            fieldnames=["C0", "C0_intra", "C0_inter", "dC_pred", "C_new", "dC_true", "fd_delta_e", "num_knobs"],
+            rows=summ,
+        )
         print(f"[P1][OUT] Wrote P1 summary to: {export_summary_csv}")
 
 
@@ -1671,11 +1679,19 @@ def run_P2_harrison_sk(
                 "dC_pred_P2": float(S_tot * dlam),
             })
             knob_out.append(row2)
-        write_csv(export_knob_csv, knob_out)
+        write_csv(
+            export_knob_csv,
+            fieldnames=list(knob_out[0].keys()) if knob_out else list(knob_rows[0].keys()) + ["lambda_P2", "dlam_P2", "dC_pred_P2"],
+            rows=knob_out,
+        )
         print(f"[P2][OUT] Wrote knob table (+P2 λ) to: {export_knob_csv}")
 
     if export_lambda_csv:
-        write_csv(export_lambda_csv, detail_rows)
+        write_csv(
+            export_lambda_csv,
+            fieldnames=["R1", "R2", "R3", "i", "j", "label_i", "label_j", "r0_A", "r1_A", "lambda_len", "lambda_ang", "lambda", "S_total", "dC_pred"],
+            rows=detail_rows,
+        )
         print(f"[P2][OUT] Wrote P2 λ table to: {export_lambda_csv}")
 
     # Step-C: nonlinear re-evaluation (toy but self-consistent within TB)
