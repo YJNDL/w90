@@ -1257,17 +1257,24 @@ def compute_total_curvature_from_hr(
     band_n_1based: int,
 ) -> Tuple[float, float, float]:
     """Compute (C_intra, C_inter, C_total) for band_n at given k and direction."""
-    w0, w1, w2, _dotR = build_weights_and_dotR(
+    _phase, w0, w1, w2, _dotR = build_weights_and_dotR(
         R_list=R_list,
         degeneracy=degeneracy,
         lattice=lattice,
         k_frac=k_frac,
         u_hat_cart=u_hat_cart,
     )
-    Hk, D1, D2 = build_H_D1_D2(H_R, w0, w1, w2)
-    C_intra, C_inter, C_total, _tbl, _evals, _evecs = curvature_and_interband_table(
-        Hk=Hk, D1=D1, D2=D2, band_n=band_n_1based, topn=0
+    Hk, D1, D2 = build_H_D1_D2(w0, w1, w2, H_R)
+    res = curvature_and_interband_table(
+        Hk=Hk,
+        D1=D1,
+        D2=D2,
+        band_n_1based=band_n_1based,
+        band_m_1based=None,
     )
+    C_intra = float(res["C_intra"])
+    C_inter = float(res["C_inter"])
+    C_total = float(res["C_total"])
     return float(C_intra), float(C_inter), float(C_total)
 
 
@@ -3772,7 +3779,7 @@ def main():
 
                 if P0_BAND_TRACK_BY_OVERLAP:
                     # Track band index at the same k by overlap with baseline eigenvector
-                    _, dotR_tmp, w0_p0, w1_p0, w2_p0 = build_weights_and_dotR(
+                    _, w0_p0, w1_p0, w2_p0, dotR_tmp = build_weights_and_dotR(
                         lattice=lattice_p0,
                         R_list=R_list_p0,
                         degeneracy=degeneracy_p0,
@@ -3956,7 +3963,7 @@ def main():
             print("\n=== P0 validation: compute true curvature from perturbed HR (Step C) ===")
 
             # True curvature on P0 Hamiltonian
-            _, dotR_p0, w0_p0, w1_p0, w2_p0 = build_weights_and_dotR(
+            _, w0_p0, w1_p0, w2_p0, dotR_p0 = build_weights_and_dotR(
                 lattice=lattice_p0,
                 R_list=R_list_p0,
                 degeneracy=degeneracy_p0,
@@ -4004,7 +4011,7 @@ def main():
 
             # Optional geometry-only term (same H_R, but P0 lattice/direction)
             if P0_INCLUDE_GEOMETRY:
-                _, dotR_geo, w0_geo, w1_geo, w2_geo = build_weights_and_dotR(
+                _, w0_geo, w1_geo, w2_geo, dotR_geo = build_weights_and_dotR(
                     lattice=lattice_p0,
                     R_list=R_list,
                     degeneracy=degeneracy,
