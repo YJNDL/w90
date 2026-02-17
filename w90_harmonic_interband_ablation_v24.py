@@ -3781,7 +3781,7 @@ def main():
                     )
                     Hk_p0, _, _ = build_H_D1_D2(w0_p0, w1_p0, w2_p0, H_R_p0)
                     evals_p0, evecs_p0 = np.linalg.eigh(Hk_p0)
-                    band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, band_ref_1based=BAND_N)
+                    band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, idx_ref_1based=BAND_N)
                     print(f"[P0] Band overlap tracking @ same k: chosen_band={band_n_p0_1based}  overlap={ov:.6f}")
 
         # ------------------ Step A/B: build knob sensitivity (+ optional P0 lambda) table ------------------
@@ -3921,7 +3921,7 @@ def main():
             )
             Hk_t, D1_t, D2_t = build_H_D1_D2(w0, w1, w2, H_R_tuned)
             evals_t, evecs_t = np.linalg.eigh(Hk_t)
-            band_t_1based, ov_t = band_track_index(evecs_ref=evecs0, evecs_new=evecs_t, band_ref_1based=BAND_N)
+            band_t_1based, ov_t = band_track_index(evecs_ref=evecs0, evecs_new=evecs_t, idx_ref_1based=BAND_N)
 
             tuned = curvature_and_interband_table(
                 Hk=Hk_t,
@@ -4000,7 +4000,7 @@ def main():
 
                 # Track band by overlap (reference: baseline eigenvectors evecs0)
                 evals_geo, evecs_geo = np.linalg.eigh(Hk_geo)
-                band_geo_1based, ov_geo = band_track_index(evecs_ref=evecs0, evecs_new=evecs_geo, band_ref_1based=BAND_N)
+                band_geo_1based, ov_geo = band_track_index(evecs_ref=evecs0, evecs_new=evecs_geo, idx_ref_1based=BAND_N)
 
                 geo = curvature_and_interband_table(
                     Hk=Hk_geo,
