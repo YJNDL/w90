@@ -4252,6 +4252,13 @@ TMP_ROOT = BASE_DIR / "_strain_sweep_tmp"
 # For derivatives: "win" recommended if your win has unit_cell_cart in Angstrom.
 LATTICE_SOURCE = "win"  # "win" or "poscar"
 
+# Prediction toggles (explicit naming; keep old aliases below for compatibility)
+ENABLE_P0_PREDICTION = DO_P0_PRED
+ENABLE_P2_PREDICTION = DO_P2_PRED
+
+# Backward-compatible aliases
+DO_P0_PRED = ENABLE_P0_PREDICTION
+DO_P2_PRED = ENABLE_P2_PREDICTION
 
 # =========================
 # Internal helpers
@@ -4289,9 +4296,21 @@ def _load_analysis_module(script_path: Path):
 
 def _run_analysis(mod, workdir: Path, overrides: Dict[str, Any]) -> None:
     """Run mod.main() with selected global overrides in a given workdir."""
+    compatibility_map = {
+        # legacy/driver aliases -> canonical names used in main logic
+        "TOPN": "TOPN_BANDS",
+        "KNOB_GROUP_MAX": "KNOB_MAX_GROUP",
+        "P0_POSCAR_FILE": "POSCAR_P0",
+        "P0_HR_FILE": "HR_FILE_P0",
+    }
+
     workdir.mkdir(parents=True, exist_ok=True)
     for k, v in overrides.items():
-        setattr(mod, k, v)
+        canonical_key = compatibility_map.get(k, k)
+        if not hasattr(mod, canonical_key):
+            print(f"[WARN] Unknown override key skipped: {k} (canonical: {canonical_key})")
+            continue
+        setattr(mod, canonical_key, v)
 
     cwd = Path.cwd()
     try:
@@ -4594,6 +4613,23 @@ def strain_sweep_main() -> None:
     # heatmap_data[strain_dir] = { knob_key : dC_pred }
     heatmap_data: Dict[str, Dict[str, float]] = {}
 
+    def _common_overrides(*, hr: Path, poscar: Path, win: Path, wout: Path,
+                          lattice_source: str) -> Dict[str, Any]:
+        return dict(
+            HR_FILE=str(hr),
+            POSCAR_FILE=str(poscar) if poscar.exists() else "",
+            WIN_FILE=str(win) if win.exists() else "",
+            WOUT_FILE=str(wout) if wout.exists() else "",
+            NUM_WANN=NUM_WANN,
+            BAND_N=BAND_N,
+            BAND_M=BAND_M,
+            TOPN_BANDS=8,
+            DIR_MODE=DIR_MODE,
+            KLINE_START=KLINE_START,
+            KLINE_END=KLINE_END,
+            LATTICE_SOURCE=lattice_source,
+        )
+
     for sdir in STRAIN_DIRS:
         case_dir = (base / sdir).resolve()
         case_hr = (case_dir / HR_NAME).resolve()
@@ -4616,19 +4652,14 @@ def strain_sweep_main() -> None:
         if str(LATTICE_SOURCE).lower() == "win" and (not win_used.exists()):
             lattice_source_case = "poscar"
 
-        case_overrides = dict(
-            HR_FILE=str(case_hr),
-            POSCAR_FILE=str(case_poscar if case_poscar.exists() else ref_poscar),
-            WIN_FILE=str(win_used) if win_used.exists() else "",
-            WOUT_FILE=str(wout_used) if wout_used.exists() else "",
-            NUM_WANN=NUM_WANN,
-            BAND_N=BAND_N,
-            BAND_M=BAND_M,
-            TOPN=8,
-            DIR_MODE=DIR_MODE,
-            KLINE_START=KLINE_START,
-            KLINE_END=KLINE_END,
-            LATTICE_SOURCE=lattice_source_case,
+        case_overrides = _common_overrides(
+            hr=case_hr,
+            poscar=(case_poscar if case_poscar.exists() else ref_poscar),
+            win=win_used,
+            wout=wout_used,
+            lattice_source=lattice_source_case,
+        )
+        case_overrides.update(dict(
             # auto k*
             AUTO_K0_MINABS_V_ENABLE=AUTO_K0_ENABLE,
             AUTO_K0_MINABS_V_NPTS=AUTO_K0_NPTS,
@@ -4647,7 +4678,7 @@ def strain_sweep_main() -> None:
             BAND_CHECK_ENABLE=False,
             HR_NUM_CHECK_ENABLE=True,
             EXPORT_HR_NUM_CHECK=True,
-        )
+        ))
 
         print(f"\n===== [{sdir}] Running strain analysis (auto k*) =====")
         _run_analysis(mod_case, case_dir, case_overrides)
@@ -4669,19 +4700,14 @@ def strain_sweep_main() -> None:
         if str(LATTICE_SOURCE).lower() == "win" and (not ref_win.exists()):
             lattice_source_ref = "poscar"
 
-        ref_overrides = dict(
-            HR_FILE=str(ref_hr),
-            POSCAR_FILE=str(ref_poscar if ref_poscar.exists() else ""),
-            WIN_FILE=str(ref_win) if ref_win.exists() else "",
-            WOUT_FILE=str(ref_wout) if ref_wout.exists() else "",
-            NUM_WANN=NUM_WANN,
-            BAND_N=BAND_N,
-            BAND_M=BAND_M,
-            TOPN=8,
-            DIR_MODE=DIR_MODE,
-            KLINE_START=KLINE_START,
-            KLINE_END=KLINE_END,
-            LATTICE_SOURCE=lattice_source_ref,
+        ref_overrides = _common_overrides(
+            hr=ref_hr,
+            poscar=ref_poscar,
+            win=ref_win,
+            wout=ref_wout,
+            lattice_source=lattice_source_ref,
+        )
+        ref_overrides.update(dict(
             # manual k*
             AUTO_K0_MINABS_V_ENABLE=False,
             K_FRAC=[kstar.kx_frac, kstar.ky_frac, kstar.kz_frac],
@@ -4697,11 +4723,11 @@ def strain_sweep_main() -> None:
             EXPORT_HR_NUM_CHECK=True,
             # knob sensitivities
             KNOB_SENS_ENABLE=True,
-            KNOB_GROUP_MAX=5,
-        )
+            KNOB_MAX_GROUP=5,
+        ))
 
         # P0: attach strained HR into the knob table
-        if DO_P0_PRED:
+        if ENABLE_P0_PREDICTION:
             # IMPORTANT: analysis script (v21+) uses HR_FILE_P0 / POSCAR_P0 internally.
             # Earlier driver drafts used P0_HR_FILE / P0_POSCAR_FILE. We set BOTH.
             ref_overrides.update(
@@ -4713,16 +4739,13 @@ def strain_sweep_main() -> None:
                     POSCAR_P0=str(case_poscar) if case_poscar.exists() else "",
                     WIN_FILE_P0=str(case_win) if case_win.exists() else "",
                     WOUT_FILE_P0=str(case_wout) if case_wout.exists() else "",
-                    # compatibility aliases
-                    P0_HR_FILE=str(case_hr),
-                    P0_POSCAR_FILE=str(case_poscar) if case_poscar.exists() else "",
                 )
             )
         else:
             ref_overrides.update(dict(P0_ENABLE=False))
 
         # P2: geometry-only mapping
-        if DO_P2_PRED:
+        if ENABLE_P2_PREDICTION:
             ref_overrides.update(
                 dict(
                     P2_ENABLE=True,
@@ -4743,7 +4766,7 @@ def strain_sweep_main() -> None:
 
         # ---- parse P0/P2 knob tables ----
         dC_pred_p0, top_p0, map_p0, kw_p0 = (float("nan"), [], {}, "")
-        if DO_P0_PRED:
+        if ENABLE_P0_PREDICTION:
             dC_pred_p0, top_p0, map_p0, kw_p0 = _parse_knob_table(
                 tmp_case / "knob_sensitivity.csv",
                 dC_col="pred_dC_total",
@@ -4752,7 +4775,7 @@ def strain_sweep_main() -> None:
             )
 
         dC_pred_p2, top_p2, map_p2, kw_p2 = (float("nan"), [], {}, "")
-        if DO_P2_PRED:
+        if ENABLE_P2_PREDICTION:
             dC_pred_p2, top_p2, map_p2, kw_p2 = _parse_knob_table(
                 tmp_case / "knob_sensitivity_with_p2.csv",
                 dC_col="dC_pred_P2",
@@ -4768,7 +4791,7 @@ def strain_sweep_main() -> None:
         elif src == "p2":
             use_source = "P2"
         else:
-            use_source = "P0" if DO_P0_PRED else ("P2" if DO_P2_PRED else "")
+            use_source = "P0" if ENABLE_P0_PREDICTION else ("P2" if ENABLE_P2_PREDICTION else "")
 
         top_used = top_p0 if use_source == "P0" else top_p2
         map_used = map_p0 if use_source == "P0" else map_p2
@@ -4790,10 +4813,10 @@ def strain_sweep_main() -> None:
             "C_strain_eVAng2": f"{C_case:.10e}",
             "C_ref_eVAng2": f"{C_ref:.10e}",
             "dC_real_eVAng2": f"{dC_real:.10e}",
-            "dC_pred_P0_eVAng2": f"{dC_pred_p0:.10e}" if DO_P0_PRED else "",
-            "dC_pred_P2_eVAng2": f"{dC_pred_p2:.10e}" if DO_P2_PRED else "",
-            "dC_real_over_pred_P0": f"{_ratio(dC_real, dC_pred_p0):.6f}" if DO_P0_PRED else "",
-            "dC_real_over_pred_P2": f"{_ratio(dC_real, dC_pred_p2):.6f}" if DO_P2_PRED else "",
+            "dC_pred_P0_eVAng2": f"{dC_pred_p0:.10e}" if ENABLE_P0_PREDICTION else "",
+            "dC_pred_P2_eVAng2": f"{dC_pred_p2:.10e}" if ENABLE_P2_PREDICTION else "",
+            "dC_real_over_pred_P0": f"{_ratio(dC_real, dC_pred_p0):.6f}" if ENABLE_P0_PREDICTION else "",
+            "dC_real_over_pred_P2": f"{_ratio(dC_real, dC_pred_p2):.6f}" if ENABLE_P2_PREDICTION else "",
             "top_hoppings_P0": kw_p0,
             "top_hoppings_P2": kw_p2,
             "top_source_used": use_source,
