@@ -4508,6 +4508,10 @@ STRAIN_DIRS = [
 REF_DIR = "0%"  # reference folder
 
 # Filenames inside each folder
+# NOTE (low-conflict merge policy): keep legacy explicit defaults as primary,
+# while still supporting seed-based inference via SWEEP_SEEDNAME when *_NAME is empty/None.
+SWEEP_SEEDNAME = "wannier90"  # optional fallback seed
+HR_NAME = "wannier90_hr.dat"
 # Preferred: set SWEEP_SEEDNAME and keep *_NAME as None for auto-inference.
 SWEEP_SEEDNAME = "wannier90"  # -> {seed}_hr.dat / {seed}.win / {seed}.wout
 HR_NAME: Optional[str] = None
@@ -4566,6 +4570,17 @@ TMP_ROOT = BASE_DIR / "_strain_sweep_tmp"
 # For derivatives: "win" recommended if your win has unit_cell_cart in Angstrom.
 LATTICE_SOURCE = "win"  # "win" or "poscar"
 
+# Canonical names used by newer code paths (compatibility bridge)
+ENABLE_P0_PREDICTION = DO_P0_PRED
+ENABLE_P2_PREDICTION = DO_P2_PRED
+
+
+def _resolve_sweep_file_names() -> Tuple[str, str, str, str]:
+    """Resolve sweep filenames from explicit names first, then seed fallback."""
+    seed = str(SWEEP_SEEDNAME).strip() or "wannier90"
+    hr_name = str(HR_NAME).strip() if (HR_NAME is not None and str(HR_NAME).strip()) else f"{seed}_hr.dat"
+    win_name = str(WIN_NAME).strip() if (WIN_NAME is not None and str(WIN_NAME).strip()) else f"{seed}.win"
+    wout_name = str(WOUT_NAME).strip() if (WOUT_NAME is not None and str(WOUT_NAME).strip()) else f"{seed}.wout"
 # Backward-compatible aliases
 DO_P0_PRED = ENABLE_P0_PREDICTION
 DO_P2_PRED = ENABLE_P2_PREDICTION
