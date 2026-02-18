@@ -670,42 +670,6 @@ KNOB_ENABLE = bool(KNOB_SENS_ENABLE or KNOB_TUNE_ENABLE or P0_ENABLE)
 # =============================================================================
 
 
-def _normalize_runtime_params() -> None:
-    """Synchronize legacy aliases with canonical runtime parameters.
-
-    Canonical knobs (recommended to edit):
-      TOPN_BANDS, KNOB_MAX_GROUP, KSCAN_*, P0_COMPARE_MODE,
-      ENABLE_P0_PREDICTION / ENABLE_P2_PREDICTION.
-    """
-    global TOPN_BANDS, TOPN
-    global KNOB_MAX_GROUP, KNOB_GROUP_MAX
-    global P0_COMPARE_MODE, P0_KPOINT_MODE
-    global KSCAN_NUM_POINTS, AUTO_K0_MINABS_V_NPTS
-    global KSCAN_REFINE_ROOT, AUTO_K0_REFINE_ROOT
-    global KSCAN_TRACK_BY_OVERLAP, AUTO_K0_OVERLAP_TRACK
-    global ENABLE_P0_PREDICTION, ENABLE_P2_PREDICTION, DO_P0_PRED, DO_P2_PRED
-    global KNOB_SENS_ENABLE, EXPORT_KNOB_SENS, KNOB_ENABLE
-
-    TOPN_BANDS = int(TOPN_BANDS)
-    TOPN = int(TOPN_BANDS)
-
-    KNOB_MAX_GROUP = int(KNOB_MAX_GROUP)
-    KNOB_GROUP_MAX = int(KNOB_MAX_GROUP)
-
-    P0_KPOINT_MODE = str(P0_COMPARE_MODE)
-    AUTO_K0_MINABS_V_NPTS = int(KSCAN_NUM_POINTS)
-    AUTO_K0_REFINE_ROOT = bool(KSCAN_REFINE_ROOT)
-    AUTO_K0_OVERLAP_TRACK = bool(KSCAN_TRACK_BY_OVERLAP)
-
-    ENABLE_P0_PREDICTION = bool(ENABLE_P0_PREDICTION)
-    ENABLE_P2_PREDICTION = bool(ENABLE_P2_PREDICTION)
-    DO_P0_PRED = ENABLE_P0_PREDICTION
-    DO_P2_PRED = ENABLE_P2_PREDICTION
-
-    EXPORT_KNOB_SENS = bool(KNOB_SENS_ENABLE)
-    KNOB_ENABLE = bool(KNOB_SENS_ENABLE or KNOB_TUNE_ENABLE or P0_ENABLE)
-
-
 HBAR2_OVER_ME = 7.61996424  # eV·Å²
 
 T_R = Tuple[int, int, int]
@@ -735,10 +699,10 @@ def read_poscar_lattice(poscar_path: Union[str, Path]) -> Lattice:
 
 def read_win_unit_cell_cart(win_path: Union[str, Path]) -> Optional[np.ndarray]:
     """
-    
+
         解析 '开始 unit_cell_cart... 终点 unit_cell_cart' 从 wannier90.win 文件.
         Returns 作为 (3,3) 直接晶格矢量在 Å 作为 ROWS, 或 None 如果不 找到/解析 failed.
-        
+
     """
     p = Path(win_path)
     if not p.exists():
@@ -780,10 +744,10 @@ def get_lattice_from_inputs(
     lattice_source: str = 'auto',
 ) -> Tuple[Lattice, str]:
     """
-    
+
         选择晶格矢量用于用于 dotR (thus 曲率单位).
         Returns (晶格, source_used).
-        
+
     """
     lattice_source = str(lattice_source).strip().lower()
     wp = Path(win_path) if win_path is not None else None
@@ -818,16 +782,16 @@ def get_lattice_from_inputs(
     return lat_pos, 'poscar'
 def read_wannier90_hr_dat(hr_path: Union[str, Path]) -> Tuple[int, int, np.ndarray, np.ndarray, np.ndarray]:
     """
-    
+
         解析 Wannier90 seedname_hr.dat.
-    
+
         Returns:
           num_wann (int)
           nrpts (int)
           R_list (nrpts,3) int
           degeneracy (nrpts,) int
           H_R (nrpts,num_wann,num_wann) 复数
-        
+
     """
     hr_path = Path(hr_path)
     lines = hr_path.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -882,20 +846,20 @@ def read_wannier90_hr_dat(hr_path: Union[str, Path]) -> Tuple[int, int, np.ndarr
 def read_wannier90_hr(hr_path: str, num_wann_expected: Optional[int] = None):
     """
     兼容旧版 wrapper 保留用于 backward-compatibility.
-    
+
         参数
         ----------
         hr_path: str
             路径 wannier90_hr.dat
         num_wann_expected: int | None
             如果提供的以及 >0, 将 sanity-check num_wann 内部文件.
-    
+
         Returns
         -------
         R_list: (nrpts,3) int ndarray
         degeneracy: (nrpts,) int ndarray
         H_R: (nrpts, num_wann, num_wann) 复数 ndarray
-        
+
     """
     num_wann, nrpts, R_list, degeneracy, H_R = read_wannier90_hr_dat(hr_path)
     if num_wann_expected is not None and num_wann_expected > 0 and num_wann_expected != num_wann:
@@ -972,20 +936,20 @@ def _canonicalize_hermitian_orbpair_row(
     dotR_eps: float = 1e-10,
 ) -> Dict[str, object]:
     """
-    
+
         Canonicalize 行 (R,i,j) 因此使得厄米等价重复项映射相同 form.
-    
+
         等价性用于:
           (R, i, j, label_i, label_j) ≡ (-R, j, i, label_j, label_i)
-    
+
         规范选择:
           - 如果 |dotR_Ang| > dotR_eps 以及 use_dotR=True: 强制 dotR_Ang >= 0 (向前方向).
           - 否则: 回退回退字典序最小在…之间 (R,i,j) 以及 (-R,j,i).
-    
+
         Notes:
           - 用于 conjugate 对应, H_im 变化符号 (复数共轭).
           - 我们总是 store dotR_Ang 作为 non-negative value 在规范行.
-        
+
     """
     R1 = int(row.get("R1", 0))
     R2 = int(row.get("R2", 0))
@@ -1032,17 +996,17 @@ def merge_orbpair_by_R_top_rows(
     shortlabel: bool = False,
 ) -> List[Dict[str, object]]:
     """
-    
+
         合并厄米等价重复项在 orbpair_by_R_top 行.
-    
+
         输出列 (full 模式):
           R1,R2,R3,组,rank_merged,i,j,label_i,label_j,
           n_terms,contrib_sum,contrib_mean,abs_contrib_sum,
           H_re,H_im,absH,weight2_Re,weight2_Im,dotR_Ang,deg,min_rank,max_rank
-    
+
         如果 shortlabel=True, 键合并跨越原子索引使用 label_i_short/label_j_short,
         以及输出 keeps 那些 short 标签 instead 的 i/j 索引.
-        
+
     """
     agg: Dict[Tuple[object, ...], Dict[str, object]] = {}
 
@@ -1126,13 +1090,13 @@ def merge_orbpair_by_R_top_rows(
 def best_real_scale(x0: np.ndarray, x1: np.ndarray, eps: float = 1e-14) -> Tuple[float, float]:
     """
     Return 最佳 *实数* 标量 λ 使得 fits x1 ≈ λ x0 在 least squares.
-    
+
         可用用于复数矢量.
-    
+
         Returns:
             λ: best-fit 实数标量
             rel_resid: ||x1 - λ x0||^2 / ||x1||^2 (0 perfect, 1 bad)
-        
+
     """
     x0 = np.asarray(x0, dtype=np.complex128).ravel()
     x1 = np.asarray(x1, dtype=np.complex128).ravel()
@@ -1156,12 +1120,12 @@ def canonical_herm_key_Rij(
 ) -> Tuple[Tuple[int, int, int], int, int]:
     """
     规范键 用于厄米对:
-    
+
             (R, i, j) <-> (-R, j, i)
-    
+
         我们优先 member 与 dotR>0 沿着选择的方向 (u-hat).
         如果 dotR≈0, 回退回退字典序排序.
-        
+
     """
     R1, R2, R3 = R
     Rp = (-R1, -R2, -R3)
@@ -1187,10 +1151,10 @@ def apply_single_hop_scaling_inplace(
 ) -> None:
     """
     Scale 单个跃迁 H_{i0,j0}(R) 通过实数 factor λ.
-    
+
         如果 keep_hermitian=True (推荐), 我们也 scale 厄米对应:
             H_{j0,i0}(-R)
-        
+
     """
     idx = R_to_idx[R]
     H_R[idx, i0, j0] *= lam
@@ -1217,16 +1181,16 @@ def apply_knob_scalings_Rij(
     one_based_orb: bool = True,
 ) -> np.ndarray:
     """
-    
+
         Apply 列表的 (R,i,j,λ) 缩放 HR 在 COPY 以及 return 它.
-    
+
         每个 item 在 `缩放` 可以:
           - dict 与键: R (iterable len=3) 或 (R1,R2,R3), i, j, λ
           - 或 dict 与键: R1,R2,R3,i,j,λ/λ/scale
-    
+
         Orbit 索引 i,j 1-基于通过默认 (设置 one_based_orb=False 使用 0-基于).
         缩放 λ 可以实数/复数.
-        
+
     """
     H_R = np.array(H_R_in, copy=True)
     R_to_idx = {tuple(map(int, R)): idx for idx, R in enumerate(R_list)}
@@ -1278,13 +1242,13 @@ def compute_knob_table_Rij(
 ) -> List[Dict[str, object]]:
     """
     构建厄米合并 per-(R,i,j) 调控旋钮表格.
-    
+
         每个行 corresponds 物理调控旋钮使得 scales 两者:
             H_{ij}(R) 以及 H_{ji}(-R)
-    
+
         灵敏度 linear-response 在 λ=1 (本征矢/denominators 固定).
         如果 H_R_p0 提供的, 也计算 best-fit λ (P0) 以及预测的 ΔC.
-        
+
     """
     nw = H_R.shape[1]
     assert H_R.shape[2] == nw
@@ -1433,10 +1397,10 @@ def apply_lambda_map_to_hr(
 ) -> np.ndarray:
     """
     Return *新增* H_R 与 element-wise 缩放 applied 在厄米对.
-    
+
         lambda_map 键 (R1,R2,R3,i,j) 与 i,j 1-基于以及 (R,i,j) 已经
         Hermitian-canonicalized. 我们 apply 相同 λ (R,i,j) 以及 (-R,j,i).
-        
+
     """
     H_new = H_R.copy()
     ridx = _idx_map_from_R_list(R_list)
@@ -1484,7 +1448,9 @@ def compute_total_curvature_from_hr(
     u_hat_cart: np.ndarray,
     band_n_1based: int,
 ) -> Tuple[float, float, float]:
-    """Compute (C_intra, C_inter, C_total) for band_n at given k and direction."""
+    """
+    计算 (C_intra, C_inter, C_total) 用于 band_n 在 given k 以及方向.
+    """
     _phase, w0, w1, w2, _dotR = build_weights_and_dotR(
         R_list=R_list,
         degeneracy=degeneracy,
@@ -1512,9 +1478,9 @@ def read_wannier_centers_from_wout(
 ) -> Optional[np.ndarray]:
     """
     解析 Wannier 中心 (埃) 从 wannier90.wout.
-    
+
         Returns 数组 shape (num_wann,3) 在笛卡尔埃, 或 None 如果不 找到.
-        
+
     """
     if wout_file is None:
         return None
@@ -1545,9 +1511,9 @@ def read_wannier_centers_from_wout(
 def _orb_kind_axis_from_label(label: str) -> Tuple[str, Optional[str]]:
     """
     非常 lightweight parser: 'Ga1_px' -> ('p','x'); 'Ga3_s' -> ('s',None).
-    
+
         未知标签 return ('?', None).
-        
+
     """
     if label is None:
         return "?", None
@@ -1943,16 +1909,16 @@ def run_P2_harrison_sk(
 # ----------------------------------------------------------------------------
 def _read_wannier90_band_dat(band_path: Union[str, Path]) -> List[np.ndarray]:
     """
-    
+
         读取 Wannier90 seedname_band.dat (或 similar) 文件.
-    
+
         格式: 块 separated 通过 blank 行; 每个线 通常:
             k_distance 能量(eV)
         一些构建可能包含额外列; 我们仅 取第一两个 numbers.
-    
+
         Returns:
             能带: 列表的 arrays 的 shape (Nk,2)
-        
+
     """
     p = Path(band_path)
     lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -1983,12 +1949,12 @@ def _read_wannier90_band_dat(band_path: Union[str, Path]) -> List[np.ndarray]:
 
 def _detect_kpath_breakpoints(kdist: np.ndarray, rel_tol: float = 1e-3, abs_tol: float = 1e-8) -> List[int]:
     """
-    
+
         检测索引的 likely high-symmetry 点 / 线段 junctions 沿着 band-plot 路径
         使用变化在 k 距离步骤.
-    
+
         Returns 列表的 索引 including [0] 以及 [N-1].
-        
+
     """
     kdist = np.asarray(kdist, dtype=float).reshape(-1)
     n = kdist.size
@@ -2031,12 +1997,12 @@ def _quad_first_derivative_at(x: np.ndarray, y: np.ndarray, x0: float) -> float:
 
 def _resolve_band_dat_path(hr_path: Path) -> Optional[Path]:
     """
-    
+
         解析能带文件路径.
-    
+
         如果 BAND_DAT_FILE 提供的, 使用它.
         否则尝试常见 candidates 基于在 推断的 seedname.
-        
+
     """
     if BAND_DAT_FILE is not None:
         p = Path(str(BAND_DAT_FILE))
@@ -2069,18 +2035,18 @@ def run_band_curvature_check(
     u_mode: str,
 ) -> List[Dict[str, object]]:
     """
-    
+
         运行数值曲率检查从 能带文件, 打印 results, 以及 return 行用于 CSV 导出.
-    
+
         Args:
             hr_path: 路径 HR 文件 (用于 seedname inference / 相对 search)
             band_n_1based: 其中能带在 能带文件
             C_analytic: 解析总计曲率 (eV·Å^2)
             u_mode: "笛卡尔" 或 "from_kline" (用于打印 suggestion)
-    
+
         Returns:
             列表的 行 (dict) 用于导出
-        
+
     """
     band_path = _resolve_band_dat_path(hr_path)
     if band_path is None:
@@ -2295,12 +2261,12 @@ def _kfrac_shift_from_h(
     h: float,
 ) -> np.ndarray:
     """
-    
+
         Convert 小笛卡尔 reciprocal-space 步骤 delta_k_cart = h * u_hat (Å^-1)
         到分数 k 步骤 delta_k_frac such 使得:
             delta_k_cart = delta_k_frac @ 晶格.B
         其中晶格.B 有倒易矢量作为 ROWS (Å^-1).
-        
+
     """
     delta_cart = float(h) * np.asarray(u_hat_cart, float)  # Å^-1
     Binv = np.linalg.inv(lattice.B)
@@ -2321,10 +2287,10 @@ def _safe_float(x: object) -> Optional[float]:
 
 def _infer_band_step_from_bandcheck_rows(rows: List[Dict[str, object]]) -> Optional[float]:
     """
-    
+
         Given band_curvature_check 行 (用于 given 目标 kdist), return reasonable
         有限差分步骤 h (Å^-1). 我们取 smallest positive among h_left/h_right.
-        
+
     """
     hs: List[float] = []
     for r in rows:
@@ -2356,10 +2322,10 @@ def run_hr_numerical_check(
     bandcheck_rows: Optional[List[Dict[str, object]]] = None,
 ) -> List[Dict[str, object]]:
     """
-    
+
         数值导数/曲率检查直接从 HR (独立的 能带.dat).
         Returns 行用于 CSV 导出.
-        
+
     """
     if not HR_NUM_CHECK_ENABLE:
         return []
@@ -2581,14 +2547,14 @@ def build_weights_and_dotR(
     u_hat: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    
+
         Return:
           相 (nrpts,) 复数 = exp(i2π k·R)
           w0 (nrpts,) 复数 = 相/deg
           w1 (nrpts,) 复数 = i dotR * w0 用于 D1
           w2 (nrpts,) 复数 = -(dotR^2) * w0 用于 D2
           dotR (nrpts,) 浮点在 Å
-        
+
     """
     # 接受别名关键词 'u_hat' 如果提供的.
     if u_hat_cart is None and u_hat is not None:
@@ -2616,10 +2582,10 @@ def build_H_D1_D2(
     scale_override: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    
+
         构建 H(k), D1, D2 使用 precomputed 权重.
         如果 scale_override (nrpts,) given, multiply 每个 R 模块通过使得 scale (消融).
-        
+
     """
     if scale_override is None:
         s = 1.0
@@ -2722,10 +2688,10 @@ def curvature_and_interband_table(
 
 def _infer_seedname_from_hr(hr_path: Path) -> str:
     """
-    
+
         推断 Wannier90 seedname 从 HR 文件名称.
         典型: seedname_hr.dat -> seedname
-        
+
     """
     name = hr_path.name
     if name.endswith("_hr.dat"):
@@ -2739,14 +2705,14 @@ def _infer_seedname_from_hr(hr_path: Path) -> str:
 
 def _read_poscar_atom_list(poscar_path: Path) -> Tuple[List[str], List[int], List[str], List[int]]:
     """
-    
+
         解析 POSCAR 元素 symbols 以及 counts (VASP5-style). Returns:
           atom_symbols (len=natoms): 全局原子列表, e.g. ["Fe","Fe","O",...]
           atom_elem_ord (len=natoms): 序号在…内元素, e.g. [1,2,1,2,3,...]
           元素种 (列表)
           counts (列表)
         如果元素 symbols 不给出 (旧 POSCAR), 元素种设置 X1,X2,...
-        
+
     """
     lines = poscar_path.read_text(encoding="utf-8", errors="ignore").splitlines()
     if len(lines) < 8:
@@ -2789,11 +2755,11 @@ def _read_poscar_atom_list(poscar_path: Path) -> Tuple[List[str], List[int], Lis
 def _canonical_orbital_list(tag: str) -> List[str]:
     """
     Expand 常见轨道集合以及 normalize 常见 synonyms.
-    
+
         Notes
         -----
         Wannier90 投影经常使用列表例如 "s; p" 或 "s,p". 我们处理 ';' 以及 ',' 作为列表 separators.
-        
+
     """
     t_raw = tag.strip().lower()
     if not t_raw:
@@ -2886,17 +2852,17 @@ def _sanitize_label(s: str, maxlen: int = 40) -> str:
 
 def _labels_from_win(win_path: Path, atom_symbols: List[str], atom_elem_ord: List[int], num_wann: int) -> List[str]:
     """
-    
+
         构建 best-effort WF 标签列表通过 expanding '开始投影' 模块在 seedname.win.
-    
+
         重要: Wannier90 allows (非常常见) syntax 例如:
             Ga: s; p
         meaning * 相同* 左位点 (Ga) 与多个轨道集合 (s 以及 p).
         分号可能也 分开多个 full specs 在一个线:
             Ga:s; 作为:p
-    
+
         该函数 handles 两者 correctly.
-        
+
     """
     lines = win_path.read_text(encoding="utf-8", errors="ignore").splitlines()
 
@@ -2905,14 +2871,14 @@ def _labels_from_win(win_path: Path, atom_symbols: List[str], atom_elem_ord: Lis
 
     def split_projection_line(s: str) -> List[Tuple[str, str]]:
         """
-        
+
                 拆分一个投影线 到列表的 (左, right_expr) specs.
-        
+
                 示例:
                   "Ga: s; p" -> [("Ga", "s,p")]
                   "Ga:s; 作为:p" -> [("Ga", "s"), ("作为", "p")]
                   "p" -> [("", "p")]
-                
+
         """
         # 移除行内注释
         s2 = s.split("#", 1)[0].split("!", 1)[0].strip()
@@ -3081,11 +3047,11 @@ def _extract_orbital_keyword(line: str) -> Optional[str]:
 
 def _labels_from_wout(wout_path: Path, atom_symbols: List[str], atom_elem_ord: List[int], num_wann: int) -> Optional[List[str]]:
     """
-    
+
         Heuristic parser 用于 seedname.wout 获取 per-WF 投影标签.
         可用仅 如果.wout 包含清晰表格与 WF/投影索引.
         如果它 不能构建 full 列表的 长度 num_wann, returns None.
-        
+
     """
     lines = wout_path.read_text(encoding="utf-8", errors="ignore").splitlines()
     labels: List[Optional[str]] = [None] * num_wann
@@ -3149,13 +3115,13 @@ def _labels_from_wout(wout_path: Path, atom_symbols: List[str], atom_elem_ord: L
 
 def get_wannier_labels(num_wann: int, hr_path: Path, poscar_path: Path) -> List[str]:
     """
-    
+
         Return 人类可读标签列表 (长度=num_wann) 用于 Wannier 轨道.
         优先级:
           1) User-provided WANNIER_LABELS (精确长度)
           2) AUTO_WANNIER_LABELS: 解析 <seedname>.wout (如果可能) 否则 <seedname>.win + POSCAR 展开
           3) 回退方案: w1, w2,...
-        
+
     """
     if WANNIER_LABELS is not None:
         if len(WANNIER_LABELS) == num_wann:
@@ -3211,10 +3177,10 @@ def get_wannier_labels(num_wann: int, hr_path: Path, poscar_path: Path) -> List[
 
 def _read_win_bands_num_points(win_path: Union[str, Path]) -> Optional[int]:
     """
-    
+
         解析 'bands_num_points' 从 wannier90.win 文件.
         Returns None 如果缺失/unreadable.
-        
+
     """
     try:
         txt = Path(win_path).read_text(encoding="utf-8", errors="ignore")
@@ -3255,14 +3221,14 @@ def scan_kline_minabs_v(
     root_tol_t: float = 1e-12,
 ) -> Dict[str, object]:
     """
-    
+
         扫描沿着 k 线 (在分数坐标) 以及寻找 k* 使得 minimizes |v|, 其中
             v = de/dk_u = <n|dH/dk_u|n>
         已计算从 HR 模型.
-    
+
         如果 refine_root=True 以及符号变化在 v 已检测到在…之间 sample 点, 执行
         二分法细化定位 v≈0 (更多准确 than 网格最小值).
-    
+
         Returns:
             dict 与键:
               - k_star (tuple[浮点,浮点,浮点])
@@ -3270,7 +3236,7 @@ def scan_kline_minabs_v(
               - band_index_star (int, 1-基于), overlap_star (浮点)
               - used_root_refine (bool)
               - table_rows (列表的 dict) 用于 CSV 导出
-        
+
     """
     k0 = np.array(k_start_frac, dtype=float)
     k1 = np.array(k_end_frac, dtype=float)
@@ -3469,8 +3435,7 @@ def scan_kline_minabs_v(
     }
 
 def main():
-    _normalize_runtime_params()
-    # ------------------ Load inputs ------------------
+    # ------------------ 加载输入项 ------------------
     hr_path = Path(HR_FILE)
     poscar_path = Path(POSCAR_FILE)
     if not hr_path.exists():
@@ -4071,7 +4036,7 @@ def main():
                 band_n_p0_1based = int(BAND_N)
 
                 if P0_BAND_TRACK_BY_OVERLAP:
-                    # Track band index at the same k by overlap with baseline eigenvector
+                    # 跟踪能带索引在 相同 k 通过重叠与 基准本征矢
                     _, w0_p0, w1_p0, w2_p0, dotR_tmp = build_weights_and_dotR(
                         lattice=lattice_p0,
                         R_list=R_list_p0,
@@ -4084,9 +4049,9 @@ def main():
                     band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, idx_ref_1based=BAND_N)
                     print(f"[P0] Band overlap tracking @ same k: chosen_band={band_n_p0_1based}  overlap={ov:.6f}")
 
-        # Build inter sensitivity vector S for knob analysis.
-        # NOTE: S must be available regardless of whether EXPORT_ORBPAIR_GROUP_RANKING is enabled.
-        D1_eig0_knob = evecs0.conj().T @ D10 @ evecs0  # (nb, nb)
+        # 构建带间灵敏度矢量 S 用于调控旋钮分析.
+        # NOTE: S 必须可用不论的 是否 EXPORT_ORBPAIR_GROUP_RANKING 启用.
+        D1_eig0_knob = evecs0.conj().T @ D10 @ evecs0  # (注：, 注：)
         Vrow_knob = D1_eig0_knob[band_n_idx, :]        # <n|D1|m>
         denom_knob = (En0 - evals0).real.astype(float)
 
@@ -4099,7 +4064,7 @@ def main():
             A_knob[m] = np.conj(Vrow_knob[m]) / denom_knob[m]
         S_knob = evecs0 @ A_knob  # (num_wann,)
 
-        # ------------------ Step A/B: build knob sensitivity (+ optional P0 lambda) table ------------------
+        # ------------------ 步骤 /B: 构建调控旋钮灵敏度 (+ 可选 P0 λ) 表格 ------------------
         knob_rows = compute_knob_table_Rij(
             R_list=R_list,
             degeneracy=degeneracy,
@@ -4254,7 +4219,7 @@ def main():
         if P0_ENABLE:
             print("\n=== P0 validation: compute true curvature from perturbed HR (Step C) ===")
 
-            # True curvature on P0 Hamiltonian
+            # True 曲率在 P0 哈密顿量
             _, w0_p0, w1_p0, w2_p0, dotR_p0 = build_weights_and_dotR(
                 lattice=lattice_p0,
                 R_list=R_list_p0,
@@ -4479,122 +4444,6 @@ Notes:
 """
 
 
-import csv
-import math
-import os
-import re
-import shutil
-import tempfile
-import uuid
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import importlib.util
-
-
-# =========================
-# USER PARAMETERS (EDIT ME)
-# =========================
-
-BASE_DIR = Path(".")
-
-# Strain folders to sweep (folder names; they will also be used as labels)
-STRAIN_DIRS = [
-    "0%",
-    "2%",
-]
-
-REF_DIR = "0%"  # reference folder
-
-# Filenames inside each folder
-# NOTE (low-conflict merge policy): keep legacy explicit defaults as primary,
-# while still supporting seed-based inference via SWEEP_SEEDNAME when *_NAME is empty/None.
-SWEEP_SEEDNAME = "wannier90"  # optional fallback seed
-HR_NAME = "wannier90_hr.dat"
-# Preferred: set SWEEP_SEEDNAME and keep *_NAME as None for auto-inference.
-SWEEP_SEEDNAME = "wannier90"  # -> {seed}_hr.dat / {seed}.win / {seed}.wout
-HR_NAME: Optional[str] = None
-POSCAR_NAME = "POSCAR"
-WIN_NAME: Optional[str] = None
-WOUT_NAME: Optional[str] = None
-
-# Analysis script to drive
-ANALYSIS_SCRIPT = Path(__file__).resolve()  # this script (single-file mode)  # set to your latest analysis script
-
-# Band / direction config
-NUM_WANN = 28
-BAND_N = 17
-BAND_M = 16
-
-DIR_MODE = "from_kline"
-KLINE_START = [0.0, 0.0, 0.0]
-KLINE_END = [0.0, 0.5, 0.0]
-
-# Auto-k* selection (min |v| for band BAND_N)
-AUTO_K0_ENABLE = True
-AUTO_K0_NPTS = 101
-AUTO_K0_REFINE_ROOT = True
-AUTO_K0_OVERLAP_TRACK = True
-
-# Predictions
-ENABLE_P0_PREDICTION = True   # HR-ratio (reference -> strain)
-ENABLE_P2_PREDICTION = True   # Harrison + Slater–Koster (geometry-only)
-# P0 k-point mode used inside the analysis script:
-#   - "same_k"       : compare all strains at the SAME k* (the k* found in each case run)
-#   - "each_minabs_v": for P0, re-find each structure's own min-|v| k* and compare at those points
-# For a clean strain→curvature trend, "same_k" is recommended.
-P0_KPOINT_MODE = "same_k"
-
-
-# Summary CSV + structured top hopping
-SUMMARY_CSV = BASE_DIR / "strain_summary.csv"
-TOP_HOPPING_N = 6  # keep top-6 knobs in structured columns
-
-# Which prediction to use for the structured top{n}_* columns and for the heatmap:
-#   "auto" : prefer P0 if enabled, else P2
-#   "P0"   : use P0 only
-#   "P2"   : use P2 only
-TOP_SOURCE = "auto"
-
-# Plot outputs
-EXPORT_PLOTS = True
-PLOT_C_FILE = BASE_DIR / "strain_vs_C.png"
-PLOT_HEATMAP_FILE = BASE_DIR / "strain_top_hopping_heatmap.png"
-HEATMAP_TOPK_GLOBAL = 12  # number of global knobs to show in heatmap
-
-# Temporary directory
-KEEP_TMP_OUTPUTS = False
-TMP_ROOT = BASE_DIR / "_strain_sweep_tmp"
-
-# For derivatives: "win" recommended if your win has unit_cell_cart in Angstrom.
-LATTICE_SOURCE = "win"  # "win" or "poscar"
-
-# Canonical names used by newer code paths (compatibility bridge)
-ENABLE_P0_PREDICTION = DO_P0_PRED
-ENABLE_P2_PREDICTION = DO_P2_PRED
-
-
-def _resolve_sweep_file_names() -> Tuple[str, str, str, str]:
-    """Resolve sweep filenames from explicit names first, then seed fallback."""
-    seed = str(SWEEP_SEEDNAME).strip() or "wannier90"
-    hr_name = str(HR_NAME).strip() if (HR_NAME is not None and str(HR_NAME).strip()) else f"{seed}_hr.dat"
-    win_name = str(WIN_NAME).strip() if (WIN_NAME is not None and str(WIN_NAME).strip()) else f"{seed}.win"
-    wout_name = str(WOUT_NAME).strip() if (WOUT_NAME is not None and str(WOUT_NAME).strip()) else f"{seed}.wout"
-# Backward-compatible aliases
-DO_P0_PRED = ENABLE_P0_PREDICTION
-DO_P2_PRED = ENABLE_P2_PREDICTION
-
-
-def _resolve_sweep_file_names() -> Tuple[str, str, str, str]:
-    """Resolve sweep filenames from explicit overrides or seedname defaults."""
-    seed = str(SWEEP_SEEDNAME).strip() or "wannier90"
-    hr_name = str(HR_NAME).strip() if HR_NAME else f"{seed}_hr.dat"
-    win_name = str(WIN_NAME).strip() if WIN_NAME else f"{seed}.win"
-    wout_name = str(WOUT_NAME).strip() if WOUT_NAME else f"{seed}.wout"
-    poscar_name = str(POSCAR_NAME).strip() or "POSCAR"
-    return hr_name, poscar_name, win_name, wout_name
-
 # =========================
 # 内部辅助函数
 # =========================
@@ -4632,9 +4481,11 @@ def _load_analysis_module(script_path: Path):
 
 
 def _run_analysis(mod, workdir: Path, overrides: Dict[str, Any]) -> None:
-    """Run mod.main() with selected global overrides in a given workdir."""
+    """
+    运行 mod.主要() 与已选择全局 overrides 在 given workdir.
+    """
     compatibility_map = {
-        # legacy/driver aliases -> canonical names used in main logic
+        # 兼容旧版/驱动项别名 -> 规范名称用于在 主要逻辑
         "TOPN": "TOPN_BANDS",
         "KNOB_GROUP_MAX": "KNOB_MAX_GROUP",
         "P0_POSCAR_FILE": "POSCAR_P0",
@@ -4648,9 +4499,6 @@ def _run_analysis(mod, workdir: Path, overrides: Dict[str, Any]) -> None:
             print(f"[WARN] Unknown override key skipped: {k} (canonical: {canonical_key})")
             continue
         setattr(mod, canonical_key, v)
-
-    if hasattr(mod, "_normalize_runtime_params"):
-        mod._normalize_runtime_params()
 
     cwd = Path.cwd()
     try:
@@ -4700,13 +4548,13 @@ def _first_nonempty(row: Dict[str, str], keys: List[str]) -> Optional[str]:
 def _parse_kstar(scan_csv: Path) -> KStarInfo:
     """
     解析 kline_scan_minabs_v.csv produced 通过分析脚本.
-    
+
         分析 v21+ writes 列:
           kx_frac, ky_frac, kz_frac, band_index_tracked, 重叠,
           E_eV, v_eVAng, abs_v_eVAng, (加上 others)
-    
+
         该 parser 向后兼容与 更旧 schemas (kx/ky/kz, tracked_band).
-        
+
     """
     if not scan_csv.exists():
         raise FileNotFoundError(f"Missing k-scan table: {scan_csv}")
@@ -4767,13 +4615,13 @@ def _parse_knob_table(
 ) -> Tuple[float, List[Dict[str, Any]], Dict[str, float], str]:
     """
     解析调控旋钮灵敏度表格.
-    
+
         Returns:
           sum_dC: 浮点
           top_entries: 列表(dict)
           contrib_map: dict(键 -> dC)
           关键词: 人类可读字符串
-        
+
     """
     if not knob_csv.exists():
         return (float("nan"), [], {}, "")
@@ -4945,10 +4793,16 @@ def _export_plots(
 
 
 def strain_sweep_main() -> None:
-    _normalize_runtime_params()
-    hr_name, poscar_name, win_name, wout_name = _resolve_sweep_file_names()
     base = BASE_DIR.resolve()
     ref_dir = (base / REF_DIR).resolve()
+
+    # 文件名解析（支持方案B：仅设置 SWEEP_SEEDNAME）
+    seed = (SWEEP_SEEDNAME or "").strip() or "wannier90"
+    hr_name = HR_NAME or f"{seed}_hr.dat"
+    win_name = WIN_NAME or f"{seed}.win"
+    wout_name = WOUT_NAME or f"{seed}.wout"
+    poscar_name = POSCAR_NAME or "POSCAR"
+
     ref_hr = (ref_dir / hr_name).resolve()
     ref_poscar = (ref_dir / poscar_name).resolve()
     ref_win = (ref_dir / win_name).resolve()
@@ -5010,7 +4864,7 @@ def strain_sweep_main() -> None:
             lattice_source=lattice_source_case,
         )
         case_overrides.update(dict(
-            # auto k*
+            # 自动 k*
             AUTO_K0_MINABS_V_ENABLE=AUTO_K0_ENABLE,
             AUTO_K0_MINABS_V_NPTS=AUTO_K0_NPTS,
             AUTO_K0_REFINE_ROOT=AUTO_K0_REFINE_ROOT,
@@ -5058,7 +4912,7 @@ def strain_sweep_main() -> None:
             lattice_source=lattice_source_ref,
         )
         ref_overrides.update(dict(
-            # manual k*
+            # 手动 k*
             AUTO_K0_MINABS_V_ENABLE=False,
             K_FRAC=[kstar.kx_frac, kstar.ky_frac, kstar.kz_frac],
             EXPORT_KSCAN_TABLE=False,
@@ -5076,10 +4930,10 @@ def strain_sweep_main() -> None:
             KNOB_MAX_GROUP=5,
         ))
 
-        # P0: attach strained HR into the knob table
+        # P0: 附加受应变的 HR 到调控旋钮表格
         if ENABLE_P0_PREDICTION:
-            # IMPORTANT: analysis script (v21+) uses HR_FILE_P0 / POSCAR_P0 internally.
-            # Earlier driver drafts used P0_HR_FILE / P0_POSCAR_FILE. We set BOTH.
+            # IMPORTANT: 分析脚本 (v21+) 使用 HR_FILE_P0 / POSCAR_P0 内部地.
+            # 更早驱动项草稿用于 P0_HR_FILE / P0_POSCAR_FILE. 我们设置 BOTH.
             ref_overrides.update(
                 dict(
                     P0_ENABLE=True,
@@ -5094,7 +4948,7 @@ def strain_sweep_main() -> None:
         else:
             ref_overrides.update(dict(P0_ENABLE=False))
 
-        # P2: geometry-only mapping
+        # P2: 仅几何映射
         if ENABLE_P2_PREDICTION:
             ref_overrides.update(
                 dict(
