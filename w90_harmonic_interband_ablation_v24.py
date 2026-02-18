@@ -670,6 +670,42 @@ KNOB_ENABLE = bool(KNOB_SENS_ENABLE or KNOB_TUNE_ENABLE or P0_ENABLE)
 # =============================================================================
 
 
+def _normalize_runtime_params() -> None:
+    """Synchronize legacy aliases with canonical runtime parameters.
+
+    Canonical knobs (recommended to edit):
+      TOPN_BANDS, KNOB_MAX_GROUP, KSCAN_*, P0_COMPARE_MODE,
+      ENABLE_P0_PREDICTION / ENABLE_P2_PREDICTION.
+    """
+    global TOPN_BANDS, TOPN
+    global KNOB_MAX_GROUP, KNOB_GROUP_MAX
+    global P0_COMPARE_MODE, P0_KPOINT_MODE
+    global KSCAN_NUM_POINTS, AUTO_K0_MINABS_V_NPTS
+    global KSCAN_REFINE_ROOT, AUTO_K0_REFINE_ROOT
+    global KSCAN_TRACK_BY_OVERLAP, AUTO_K0_OVERLAP_TRACK
+    global ENABLE_P0_PREDICTION, ENABLE_P2_PREDICTION, DO_P0_PRED, DO_P2_PRED
+    global KNOB_SENS_ENABLE, EXPORT_KNOB_SENS, KNOB_ENABLE
+
+    TOPN_BANDS = int(TOPN_BANDS)
+    TOPN = int(TOPN_BANDS)
+
+    KNOB_MAX_GROUP = int(KNOB_MAX_GROUP)
+    KNOB_GROUP_MAX = int(KNOB_MAX_GROUP)
+
+    P0_KPOINT_MODE = str(P0_COMPARE_MODE)
+    AUTO_K0_MINABS_V_NPTS = int(KSCAN_NUM_POINTS)
+    AUTO_K0_REFINE_ROOT = bool(KSCAN_REFINE_ROOT)
+    AUTO_K0_OVERLAP_TRACK = bool(KSCAN_TRACK_BY_OVERLAP)
+
+    ENABLE_P0_PREDICTION = bool(ENABLE_P0_PREDICTION)
+    ENABLE_P2_PREDICTION = bool(ENABLE_P2_PREDICTION)
+    DO_P0_PRED = ENABLE_P0_PREDICTION
+    DO_P2_PRED = ENABLE_P2_PREDICTION
+
+    EXPORT_KNOB_SENS = bool(KNOB_SENS_ENABLE)
+    KNOB_ENABLE = bool(KNOB_SENS_ENABLE or KNOB_TUNE_ENABLE or P0_ENABLE)
+
+
 HBAR2_OVER_ME = 7.61996424  # eV·Å²
 
 T_R = Tuple[int, int, int]
@@ -1448,9 +1484,7 @@ def compute_total_curvature_from_hr(
     u_hat_cart: np.ndarray,
     band_n_1based: int,
 ) -> Tuple[float, float, float]:
-    """
-    计算 (C_intra, C_inter, C_total) 用于 band_n 在 given k 以及方向.
-    """
+    """Compute (C_intra, C_inter, C_total) for band_n at given k and direction."""
     _phase, w0, w1, w2, _dotR = build_weights_and_dotR(
         R_list=R_list,
         degeneracy=degeneracy,
@@ -3435,7 +3469,8 @@ def scan_kline_minabs_v(
     }
 
 def main():
-    # ------------------ 加载输入项 ------------------
+    _normalize_runtime_params()
+    # ------------------ Load inputs ------------------
     hr_path = Path(HR_FILE)
     poscar_path = Path(POSCAR_FILE)
     if not hr_path.exists():
@@ -4036,7 +4071,7 @@ def main():
                 band_n_p0_1based = int(BAND_N)
 
                 if P0_BAND_TRACK_BY_OVERLAP:
-                    # 跟踪能带索引在 相同 k 通过重叠与 基准本征矢
+                    # Track band index at the same k by overlap with baseline eigenvector
                     _, w0_p0, w1_p0, w2_p0, dotR_tmp = build_weights_and_dotR(
                         lattice=lattice_p0,
                         R_list=R_list_p0,
@@ -4049,9 +4084,9 @@ def main():
                     band_n_p0_1based, ov = band_track_index(evecs_ref=evecs0, evecs_new=evecs_p0, idx_ref_1based=BAND_N)
                     print(f"[P0] Band overlap tracking @ same k: chosen_band={band_n_p0_1based}  overlap={ov:.6f}")
 
-        # 构建带间灵敏度矢量 S 用于调控旋钮分析.
-        # NOTE: S 必须可用不论的 是否 EXPORT_ORBPAIR_GROUP_RANKING 启用.
-        D1_eig0_knob = evecs0.conj().T @ D10 @ evecs0  # (注：, 注：)
+        # Build inter sensitivity vector S for knob analysis.
+        # NOTE: S must be available regardless of whether EXPORT_ORBPAIR_GROUP_RANKING is enabled.
+        D1_eig0_knob = evecs0.conj().T @ D10 @ evecs0  # (nb, nb)
         Vrow_knob = D1_eig0_knob[band_n_idx, :]        # <n|D1|m>
         denom_knob = (En0 - evals0).real.astype(float)
 
@@ -4064,7 +4099,7 @@ def main():
             A_knob[m] = np.conj(Vrow_knob[m]) / denom_knob[m]
         S_knob = evecs0 @ A_knob  # (num_wann,)
 
-        # ------------------ 步骤 /B: 构建调控旋钮灵敏度 (+ 可选 P0 λ) 表格 ------------------
+        # ------------------ Step A/B: build knob sensitivity (+ optional P0 lambda) table ------------------
         knob_rows = compute_knob_table_Rij(
             R_list=R_list,
             degeneracy=degeneracy,
@@ -4219,7 +4254,7 @@ def main():
         if P0_ENABLE:
             print("\n=== P0 validation: compute true curvature from perturbed HR (Step C) ===")
 
-            # True 曲率在 P0 哈密顿量
+            # True curvature on P0 Hamiltonian
             _, w0_p0, w1_p0, w2_p0, dotR_p0 = build_weights_and_dotR(
                 lattice=lattice_p0,
                 R_list=R_list_p0,
@@ -4444,6 +4479,107 @@ Notes:
 """
 
 
+import csv
+import math
+import os
+import re
+import shutil
+import tempfile
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import importlib.util
+
+
+# =========================
+# USER PARAMETERS (EDIT ME)
+# =========================
+
+BASE_DIR = Path(".")
+
+# Strain folders to sweep (folder names; they will also be used as labels)
+STRAIN_DIRS = [
+    "0%",
+    "2%",
+]
+
+REF_DIR = "0%"  # reference folder
+
+# Filenames inside each folder
+# Preferred: set SWEEP_SEEDNAME and keep *_NAME as None for auto-inference.
+SWEEP_SEEDNAME = "wannier90"  # -> {seed}_hr.dat / {seed}.win / {seed}.wout
+HR_NAME: Optional[str] = None
+POSCAR_NAME = "POSCAR"
+WIN_NAME: Optional[str] = None
+WOUT_NAME: Optional[str] = None
+
+# Analysis script to drive
+ANALYSIS_SCRIPT = Path(__file__).resolve()  # this script (single-file mode)  # set to your latest analysis script
+
+# Band / direction config
+NUM_WANN = 28
+BAND_N = 17
+BAND_M = 16
+
+DIR_MODE = "from_kline"
+KLINE_START = [0.0, 0.0, 0.0]
+KLINE_END = [0.0, 0.5, 0.0]
+
+# Auto-k* selection (min |v| for band BAND_N)
+AUTO_K0_ENABLE = True
+AUTO_K0_NPTS = 101
+AUTO_K0_REFINE_ROOT = True
+AUTO_K0_OVERLAP_TRACK = True
+
+# Predictions
+ENABLE_P0_PREDICTION = True   # HR-ratio (reference -> strain)
+ENABLE_P2_PREDICTION = True   # Harrison + Slater–Koster (geometry-only)
+# P0 k-point mode used inside the analysis script:
+#   - "same_k"       : compare all strains at the SAME k* (the k* found in each case run)
+#   - "each_minabs_v": for P0, re-find each structure's own min-|v| k* and compare at those points
+# For a clean strain→curvature trend, "same_k" is recommended.
+P0_KPOINT_MODE = "same_k"
+
+
+# Summary CSV + structured top hopping
+SUMMARY_CSV = BASE_DIR / "strain_summary.csv"
+TOP_HOPPING_N = 6  # keep top-6 knobs in structured columns
+
+# Which prediction to use for the structured top{n}_* columns and for the heatmap:
+#   "auto" : prefer P0 if enabled, else P2
+#   "P0"   : use P0 only
+#   "P2"   : use P2 only
+TOP_SOURCE = "auto"
+
+# Plot outputs
+EXPORT_PLOTS = True
+PLOT_C_FILE = BASE_DIR / "strain_vs_C.png"
+PLOT_HEATMAP_FILE = BASE_DIR / "strain_top_hopping_heatmap.png"
+HEATMAP_TOPK_GLOBAL = 12  # number of global knobs to show in heatmap
+
+# Temporary directory
+KEEP_TMP_OUTPUTS = False
+TMP_ROOT = BASE_DIR / "_strain_sweep_tmp"
+
+# For derivatives: "win" recommended if your win has unit_cell_cart in Angstrom.
+LATTICE_SOURCE = "win"  # "win" or "poscar"
+
+# Backward-compatible aliases
+DO_P0_PRED = ENABLE_P0_PREDICTION
+DO_P2_PRED = ENABLE_P2_PREDICTION
+
+
+def _resolve_sweep_file_names() -> Tuple[str, str, str, str]:
+    """Resolve sweep filenames from explicit overrides or seedname defaults."""
+    seed = str(SWEEP_SEEDNAME).strip() or "wannier90"
+    hr_name = str(HR_NAME).strip() if HR_NAME else f"{seed}_hr.dat"
+    win_name = str(WIN_NAME).strip() if WIN_NAME else f"{seed}.win"
+    wout_name = str(WOUT_NAME).strip() if WOUT_NAME else f"{seed}.wout"
+    poscar_name = str(POSCAR_NAME).strip() or "POSCAR"
+    return hr_name, poscar_name, win_name, wout_name
+
 # =========================
 # 内部辅助函数
 # =========================
@@ -4481,11 +4617,9 @@ def _load_analysis_module(script_path: Path):
 
 
 def _run_analysis(mod, workdir: Path, overrides: Dict[str, Any]) -> None:
-    """
-    运行 mod.主要() 与已选择全局 overrides 在 given workdir.
-    """
+    """Run mod.main() with selected global overrides in a given workdir."""
     compatibility_map = {
-        # 兼容旧版/驱动项别名 -> 规范名称用于在 主要逻辑
+        # legacy/driver aliases -> canonical names used in main logic
         "TOPN": "TOPN_BANDS",
         "KNOB_GROUP_MAX": "KNOB_MAX_GROUP",
         "P0_POSCAR_FILE": "POSCAR_P0",
@@ -4499,6 +4633,9 @@ def _run_analysis(mod, workdir: Path, overrides: Dict[str, Any]) -> None:
             print(f"[WARN] Unknown override key skipped: {k} (canonical: {canonical_key})")
             continue
         setattr(mod, canonical_key, v)
+
+    if hasattr(mod, "_normalize_runtime_params"):
+        mod._normalize_runtime_params()
 
     cwd = Path.cwd()
     try:
@@ -4793,16 +4930,10 @@ def _export_plots(
 
 
 def strain_sweep_main() -> None:
+    _normalize_runtime_params()
+    hr_name, poscar_name, win_name, wout_name = _resolve_sweep_file_names()
     base = BASE_DIR.resolve()
     ref_dir = (base / REF_DIR).resolve()
-
-    # 文件名解析（支持方案B：仅设置 SWEEP_SEEDNAME）
-    seed = (SWEEP_SEEDNAME or "").strip() or "wannier90"
-    hr_name = HR_NAME or f"{seed}_hr.dat"
-    win_name = WIN_NAME or f"{seed}.win"
-    wout_name = WOUT_NAME or f"{seed}.wout"
-    poscar_name = POSCAR_NAME or "POSCAR"
-
     ref_hr = (ref_dir / hr_name).resolve()
     ref_poscar = (ref_dir / poscar_name).resolve()
     ref_win = (ref_dir / win_name).resolve()
@@ -4864,7 +4995,7 @@ def strain_sweep_main() -> None:
             lattice_source=lattice_source_case,
         )
         case_overrides.update(dict(
-            # 自动 k*
+            # auto k*
             AUTO_K0_MINABS_V_ENABLE=AUTO_K0_ENABLE,
             AUTO_K0_MINABS_V_NPTS=AUTO_K0_NPTS,
             AUTO_K0_REFINE_ROOT=AUTO_K0_REFINE_ROOT,
@@ -4912,7 +5043,7 @@ def strain_sweep_main() -> None:
             lattice_source=lattice_source_ref,
         )
         ref_overrides.update(dict(
-            # 手动 k*
+            # manual k*
             AUTO_K0_MINABS_V_ENABLE=False,
             K_FRAC=[kstar.kx_frac, kstar.ky_frac, kstar.kz_frac],
             EXPORT_KSCAN_TABLE=False,
@@ -4930,10 +5061,10 @@ def strain_sweep_main() -> None:
             KNOB_MAX_GROUP=5,
         ))
 
-        # P0: 附加受应变的 HR 到调控旋钮表格
+        # P0: attach strained HR into the knob table
         if ENABLE_P0_PREDICTION:
-            # IMPORTANT: 分析脚本 (v21+) 使用 HR_FILE_P0 / POSCAR_P0 内部地.
-            # 更早驱动项草稿用于 P0_HR_FILE / P0_POSCAR_FILE. 我们设置 BOTH.
+            # IMPORTANT: analysis script (v21+) uses HR_FILE_P0 / POSCAR_P0 internally.
+            # Earlier driver drafts used P0_HR_FILE / P0_POSCAR_FILE. We set BOTH.
             ref_overrides.update(
                 dict(
                     P0_ENABLE=True,
@@ -4948,7 +5079,7 @@ def strain_sweep_main() -> None:
         else:
             ref_overrides.update(dict(P0_ENABLE=False))
 
-        # P2: 仅几何映射
+        # P2: geometry-only mapping
         if ENABLE_P2_PREDICTION:
             ref_overrides.update(
                 dict(
